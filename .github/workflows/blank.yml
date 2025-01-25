@@ -1,0 +1,61 @@
+name: Build crDroid Android 14 ROM with GApps (Moto G32)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      # 1. Configurar ambiente básico
+      - name: Set up environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-11-jdk git wget ccache flex bison gperf build-essential zip curl zlib1g-dev libncurses5-dev lib32z1 libbz2-1.0 libbz2-dev libstdc++6 libstdc++6:i386 libxml2 libxml2-utils python-is-python3 python3 python3-pip unzip lzop
+
+      # 2. Sincronizar repositório crDroid para Android 14
+      - name: Sync crDroid Source for Android 14
+        run: |
+          mkdir -p ~/rom && cd ~/rom
+          repo init -u https://github.com/crdroidandroid/android.git -b 14.0 --depth=1
+          repo sync -c -j$(nproc) --no-clone-bundle --no-tags
+
+      # 3. Configurar ccache
+      - name: Configure ccache
+        run: |
+          export USE_CCACHE=1
+          export CCACHE_DIR=~/ccache
+          ccache -M 10G
+
+      # 4. Clonar árvore de dispositivos, kernel e blobs para o Moto G32
+      - name: Set up device tree, kernel, and blobs for Moto G32
+        run: |
+          cd ~/rom
+          # Árvore de dispositivos para Moto G32
+          git clone https://github.com/LineageOS/android_device_motorola_devon device/motorola/devon
+          # Kernel para Moto G32
+          git clone https://github.com/LineageOS/android_kernel_motorola_sdm660 kernel/motorola/sdm660
+          # Vendor e blobs para Moto G32
+          git clone https://github.com/LineageOS/android_vendor_motorola_devon vendor/motorola/devon
+
+      # 5. Baixar GApps para crDroid Android 14
+      - name: Download GApps for Android 14
+        run: |
+          cd ~/rom
+          wget https://github.com/opengapps/opengapps/releases/download/20230105/open_gapps-arm64-14.0-pico-20230105.zip -O ~/rom/out/target/product/devon/open_gapps.zip
+
+      # 6. Compilar a ROM crDroid Android 14 com GApps
+      - name: Build crDroid Android 14 ROM with GApps
+        run: |
+          cd ~/rom
+          source build/envsetup.sh
+          lunch crdroid_devon-userdebug
+          make bacon -j$(nproc)
+
+      # 7. Compactar e salvar a ROM compilada
+      - name: Upload ROM
+        uses: actions/upload-artifact@v3
+        with:
+          name: crDroid-Android14-ROM-with-GApps
+          path: ~/rom/out/target/product/devon/*.zip
