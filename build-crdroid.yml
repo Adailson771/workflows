@@ -1,0 +1,66 @@
+
+name: Build crDroid for Moto G32 (devon)
+
+on:
+  push:
+    branches:
+      - main  # Dispara o workflow automaticamente ao fazer push no branch principal.
+  workflow_dispatch:  # Permite iniciar manualmente pelo botão "Actions".
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04  # Máquina virtual baseada no Ubuntu 22.04.
+
+    steps:
+      # Etapa 1: Checkout do código
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Etapa 2: Instalar dependências necessárias
+      - name: Set up build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-11-jdk git ccache unzip build-essential \
+                                  curl zip python3 python-is-python3 repo
+
+      # Etapa 3: Configurar repositório e sincronizar o código-fonte
+      - name: Sync crDroid source
+        run: |
+          mkdir -p ~/rom
+          cd ~/rom
+          repo init -u https://github.com/crdroidandroid/android.git -b 13.0
+          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc)
+
+      # Etapa 4: Clonar device tree, kernel source e vendor blobs específicos
+      - name: Clone device-specific repositories
+        run: |
+          cd ~/rom
+          git clone https://github.com/LineageOS/android_device_motorola_devon.git device/motorola/devon
+          git clone https://github.com/LineageOS/android_kernel_motorola_devon.git kernel/motorola/devon
+          git clone https://github.com/TheMuppets/proprietary_vendor_motorola_devon.git vendor/motorola/devon
+
+      # Etapa 5: Adicionar GApps (Google Apps)
+      - name: Add GApps
+        run: |
+          cd ~/rom/vendor
+          git clone https://github.com/nikgapps/config.git gapps
+
+      # Etapa 6: Configurar o ambiente de compilação
+      - name: Setup build environment
+        run: |
+          cd ~/rom
+          source build/envsetup.sh
+          lunch lineage_devon-userdebug  # Configuração específica para o Moto G32
+
+      # Etapa 7: Compilar a ROM
+      - name: Build crDroid
+        run: |
+          cd ~/rom
+          make -j$(nproc) bacon
+
+      # Etapa 8: Salvar os artefatos gerados
+      - name: Upload ROM
+        uses: actions/upload-artifact@v3
+        with:
+          name: crDroid-ROM
+          path: ~/rom/out/target/product/devon/*.zip  # Caminho para o arquivo gerado.
